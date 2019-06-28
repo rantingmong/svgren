@@ -11,6 +11,28 @@
 using namespace svgren;
 
 
+namespace{
+    std::map<svgdom::BlendMode_e, cairo_operator_t> blendModesMap = {
+        { svgdom::BlendMode_e::NORMAL, CAIRO_OPERATOR_OVER },
+        { svgdom::BlendMode_e::MULTIPLY, CAIRO_OPERATOR_MULTIPLY },
+        { svgdom::BlendMode_e::SCREEN, CAIRO_OPERATOR_SCREEN },
+        { svgdom::BlendMode_e::OVERLAY, CAIRO_OPERATOR_OVERLAY },
+        { svgdom::BlendMode_e::DARKEN, CAIRO_OPERATOR_DARKEN },
+        { svgdom::BlendMode_e::LIGHTEN, CAIRO_OPERATOR_LIGHTEN },
+        { svgdom::BlendMode_e::SOFT_LIGHT, CAIRO_OPERATOR_SOFT_LIGHT },
+        { svgdom::BlendMode_e::HARD_LIGHT, CAIRO_OPERATOR_HARD_LIGHT },
+        { svgdom::BlendMode_e::COLOR_BURN, CAIRO_OPERATOR_COLOR_BURN },
+        { svgdom::BlendMode_e::COLOR_DODGE, CAIRO_OPERATOR_COLOR_DODGE },
+        { svgdom::BlendMode_e::DIFFERENCE, CAIRO_OPERATOR_DIFFERENCE },
+        { svgdom::BlendMode_e::EXCLUSION, CAIRO_OPERATOR_EXCLUSION },
+        { svgdom::BlendMode_e::HUE, CAIRO_OPERATOR_HSL_HUE },
+        { svgdom::BlendMode_e::SATURATION, CAIRO_OPERATOR_HSL_SATURATION },
+        { svgdom::BlendMode_e::COLOR, CAIRO_OPERATOR_HSL_COLOR },
+        { svgdom::BlendMode_e::LUMINOSITY, CAIRO_OPERATOR_HSL_LUMINOSITY },
+    };
+}
+
+
 real Renderer::lengthToPx(const svgdom::Length& l, unsigned coordIndex) const noexcept{
 	if (l.isPercent()) {
 		ASSERT(coordIndex < this->viewport.size())
@@ -446,8 +468,17 @@ void Renderer::renderCurrentShape(bool isCairoGroupPushed) {
 		ASSERT(cairo_status(this->cr) == CAIRO_STATUS_SUCCESS)
 	}
 
-	svgdom::StyleValue blackFill;
+    svgdom::StyleValue blendModeStyle;
+    
+    auto blendMode = this->styleStack.getStyleProperty(svgdom::StyleProperty_e::MIX_BLEND_MODE);
+    
+    if (!blendMode) {
+        blendModeStyle = svgdom::StyleValue::parseMixBlendMode("normal");
+        blendMode = &blendModeStyle;
+    }
 
+	svgdom::StyleValue blackFill;
+    
 	auto fill = this->styleStack.getStyleProperty(svgdom::StyleProperty_e::FILL);
 	if (!fill) {
 		blackFill = svgdom::StyleValue::parsePaint("black");
@@ -467,6 +498,8 @@ void Renderer::renderCurrentShape(bool isCairoGroupPushed) {
 		}
 	}
 
+    auto op = blendModesMap.find(blendMode->blendMode);
+
 	ASSERT(fill)
 	if (!fill->isNone()) {
 		if (fill->isUrl()) {
@@ -482,7 +515,12 @@ void Renderer::renderCurrentShape(bool isCairoGroupPushed) {
 			ASSERT(cairo_status(this->cr) == CAIRO_STATUS_SUCCESS)
 		}
 
-		cairo_fill_preserve(this->cr);
+        if (op != blendModesMap.end()) {
+            cairo_set_operator(this->cr, op->second);
+            ASSERT(cairo_status(this->cr) == CAIRO_STATUS_SUCCESS)
+        }
+
+        cairo_fill_preserve(this->cr);
 		ASSERT_INFO(cairo_status(this->cr) == CAIRO_STATUS_SUCCESS, "cairo error: " << cairo_status_to_string(cairo_status(this->cr)))
 	}
 
@@ -553,6 +591,11 @@ void Renderer::renderCurrentShape(bool isCairoGroupPushed) {
 			cairo_set_source_rgba(this->cr, rgb.r, rgb.g, rgb.b, strokeOpacity * opacity);
 			ASSERT(cairo_status(this->cr) == CAIRO_STATUS_SUCCESS)
 		}
+
+        if (op != blendModesMap.end()) {
+            cairo_set_operator(this->cr, op->second);
+            ASSERT(cairo_status(this->cr) == CAIRO_STATUS_SUCCESS)
+        }
 
 		cairo_stroke_preserve(this->cr);
 		ASSERT(cairo_status(this->cr) == CAIRO_STATUS_SUCCESS)
